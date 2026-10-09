@@ -30,8 +30,7 @@ describe('GlassesView', () => {
     expect(await view.start()).toBe(true);
 
     const text = Array.from({ length: 25 }, (_, i) => `Line ${i + 1}`).join('\n');
-    view.show('> question', text, { resetPage: true });
-    view.settle();
+    view.show('> question', text);
     await flush();
     expect(lastBody(updates)?.startsWith('Line 1\n')).toBe(true);
     expect(lastHeader(updates)).toMatch(/1\/3$/);
@@ -51,7 +50,7 @@ describe('GlassesView', () => {
     const view = new GlassesView(bridge as any, (a) => actions.push(a));
     await view.start();
     emit({ sysEvent: { eventType: OsEventTypeList.DOUBLE_CLICK_EVENT } as any });
-    emit({ menuItemClickEvent: { itemID: MENU.stop } as any });
-    expect(actions).toEqual(['newChat', 'stop']);
+    emit({ menuItemClickEvent: { itemID: MENU.clear } as any });
+    expect(actions).toEqual(['clear', 'clear']);
   });
 });

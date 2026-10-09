@@ -1,18 +1,17 @@
 /**
  * Receives messages from the iPhone Shortcut.
  *
- * The Shortcut does an HTTP POST to `<ntfyServer>/<topic>` with the dictated
- * text as the body. This app keeps a Server-Sent Events subscription open on the
- * same topic. ntfy.sh is a free, open-source pub/sub relay, so no server of your
- * own is needed.
+ * The Shortcut runs the Claude app's "Ask Claude" action and then does an HTTP
+ * POST of the response to `<ntfyServer>/<topic>`. This app keeps a Server-Sent
+ * Events subscription open on the same topic. ntfy.sh is a free, open-source
+ * pub/sub relay, so no server of your own is needed.
  *
- * The optional `Title` header picks what to do with the message:
- *   (none) / "ask"  ask Claude the text as a question (follow-ups keep context)
- *   "new"           start a new conversation, then ask
- *   "show"          show the text as-is on the glasses (no Claude call), e.g. the
- *                   output of the Claude app's own Shortcuts action
+ * The optional `Title` header says what the text is:
+ *   (none) / "answer"  Claude's answer: shown on the glasses
+ *   "question"         your question: shown in the header while Claude works
+ *   "clear"            clear the glasses
  */
-export type InboxKind = 'ask' | 'new' | 'show';
+export type InboxKind = 'answer' | 'question' | 'clear';
 
 export interface InboxMessage {
   id: string;
@@ -27,18 +26,31 @@ interface NtfyEvent {
   event: string;
   message?: string;
   title?: string;
+  /** ntfy turns bodies over 4 KB into an attachment; long answers arrive this way. */
+  attachment?: { url: string; type?: string; size?: number };
 }
 
 export function parseKind(title: string | undefined): InboxKind {
   const t = (title ?? '').trim().toLowerCase();
-  if (t === 'new' || t === 'new chat') return 'new';
-  if (t === 'show' || t === 'display' || t === 'answer') return 'show';
-  return 'ask';
+  if (t === 'question' || t === 'q' || t === 'ask') return 'question';
+  if (t === 'clear' || t === 'new' || t === 'new chat') return 'clear';
+  return 'answer';
+}
+
+/** Get the full text of an event, downloading it when ntfy stored it as an attachment. */
+export async function eventText(data: NtfyEvent, fetchFn: typeof fetch = fetch): Promise<string> {
+  const att = data.attachment;
+  if (att?.url && (!att.type || att.type.startsWith('text/')) && (att.size ?? 0) < 256_000) {
+    const res = await fetchFn(att.url);
+    if (res.ok) return (await res.text()).trim();
+  }
+  return (data.message ?? '').trim();
 }
 
 export class Inbox {
   private source: EventSource | null = null;
   private seen = new Set<string>();
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(
     private onMessage: (msg: InboxMessage) => void,
@@ -62,9 +74,14 @@ export class Inbox {
       } catch {
         return;
       }
-      if (data.event !== 'message' || !data.message || this.seen.has(data.id)) return;
+      if (data.event !== 'message' || this.seen.has(data.id)) return;
       this.seen.add(data.id);
-      this.onMessage({ id: data.id, kind: parseKind(data.title), text: data.message.trim() });
+      // Keep messages in order even when one needs an attachment download.
+      this.queue = this.queue.then(async () => {
+        const text = await eventText(data).catch(() => (data.message ?? '').trim());
+        const kind = parseKind(data.title);
+        if (text || kind === 'clear') this.onMessage({ id: data.id, kind, text });
+      });
     };
   }
 

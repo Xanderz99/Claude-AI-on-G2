@@ -77,13 +77,6 @@ section {
 .pill[data-state='off'] {
   color: var(--off);
 }
-.warning {
-  margin: 16px 0 0;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--warn);
-  color: var(--warn);
-}
 .row {
   display: flex;
   justify-content: space-between;
@@ -109,13 +102,9 @@ section {
   color: var(--text);
   margin-top: 4px;
 }
-.a.error {
-  color: var(--error);
-}
 .muted {
   color: var(--muted);
 }
-form.ask,
 .inline,
 .url-box {
   display: flex;

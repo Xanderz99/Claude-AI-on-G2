@@ -9,8 +9,8 @@
   "permissions": [
     {
       "name": "network",
-      "desc": "Sends your questions to the Claude API (api.anthropic.com) and receives questions from your iPhone Shortcut through ntfy.sh.",
-      "whitelist": ["https://api.anthropic.com", "https://ntfy.sh"]
+      "desc": "Receives Claude answers from your iPhone Shortcut through the ntfy.sh relay so they can be shown on your glasses.",
+      "whitelist": ["https://ntfy.sh"]
     }
   ],
   "supported_languages": ["en"]

@@ -25,19 +25,18 @@ export const LINES_PER_PAGE = Math.floor((BODY_H - 2 * PAD) / LINE_H);
 const HEADER = { id: 1, name: 'header' };
 const BODY = { id: 2, name: 'body' };
 
-export const MENU = { newChat: 1, repeat: 2, stop: 3 } as const;
+export const MENU = { clear: 1, firstPage: 2 } as const;
 
-export type GlassesAction = 'newChat' | 'repeat' | 'stop' | 'exit';
+export type GlassesAction = 'clear' | 'exit';
 
 /**
  * Owns the glasses page: a one-line header (question + page number) and a
- * paged body. Swipe forward/back (or tap) to page, double-tap for a new chat,
+ * paged body. Swipe forward/back (or tap) to page, double-tap to clear,
  * long-press the temple for the menu.
  */
 export class GlassesView {
   private pages: string[] = [''];
   private page = 0;
-  private follow = true;
   private title = 'Claude';
   private status = '';
   private lastBody = '';
@@ -83,9 +82,8 @@ export class GlassesView {
         ],
         menuObject: new MenuContainerProperty({
           menuItems: [
-            new MenuItemProperty({ itemID: MENU.newChat, itemName: 'New chat' }),
-            new MenuItemProperty({ itemID: MENU.repeat, itemName: 'Ask again' }),
-            new MenuItemProperty({ itemID: MENU.stop, itemName: 'Stop answer' }),
+            new MenuItemProperty({ itemID: MENU.firstPage, itemName: 'First page' }),
+            new MenuItemProperty({ itemID: MENU.clear, itemName: 'Clear' }),
           ],
         }),
       }),
@@ -95,24 +93,11 @@ export class GlassesView {
     return this.ready;
   }
 
-  /** Show a question and (possibly partial) answer. Call repeatedly while streaming. */
-  show(title: string, text: string, opts: { status?: string; resetPage?: boolean } = {}): void {
+  /** Show a title line and body text, split into pages. */
+  show(title: string, text: string, status = ''): void {
     this.title = title;
-    this.status = opts.status ?? '';
+    this.status = status;
     this.pages = paginate(toPlainText(text), BODY_TEXT_WIDTH, LINES_PER_PAGE);
-    if (opts.resetPage) {
-      this.page = 0;
-      this.follow = true;
-    }
-    // While an answer streams in, follow the newest page until the user pages manually.
-    if (this.follow) this.page = this.pages.length - 1;
-    this.page = Math.min(this.page, this.pages.length - 1);
-    this.scheduleRender();
-  }
-
-  /** Stop following new text and jump to the first page (after an answer completes). */
-  settle(): void {
-    this.follow = false;
     this.page = 0;
     this.scheduleRender();
   }
@@ -121,16 +106,14 @@ export class GlassesView {
     const next = this.page + delta;
     if (next < 0 || next >= this.pages.length) return;
     this.page = next;
-    this.follow = false;
     this.scheduleRender(true);
   }
 
   private handleEvent(event: EvenHubEvent): void {
     if (event.menuItemClickEvent) {
       const id = event.menuItemClickEvent.itemID;
-      if (id === MENU.newChat) this.onAction('newChat');
-      else if (id === MENU.repeat) this.onAction('repeat');
-      else if (id === MENU.stop) this.onAction('stop');
+      if (id === MENU.clear) this.onAction('clear');
+      else if (id === MENU.firstPage) this.turnPage(-this.page);
       return;
     }
     const ev = event.textEvent ?? event.sysEvent ?? event.listEvent;
@@ -146,7 +129,7 @@ export class GlassesView {
         this.turnPage(-1);
         break;
       case OsEventTypeList.DOUBLE_CLICK_EVENT:
-        this.onAction('newChat');
+        this.onAction('clear');
         break;
       case OsEventTypeList.SYSTEM_EXIT_EVENT:
       case OsEventTypeList.ABNORMAL_EXIT_EVENT:
@@ -161,7 +144,7 @@ export class GlassesView {
       if (!immediate) return;
       clearTimeout(this.renderTimer);
     }
-    // Throttle BLE updates while text streams in.
+    // Coalesce bursts of updates into one BLE write.
     this.renderTimer = setTimeout(
       () => {
         this.renderTimer = null;

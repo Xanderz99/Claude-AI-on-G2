@@ -16,13 +16,12 @@
     "node": "^20.0.0 || >=22.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.132.1",
     "@evenrealities/even_hub_sdk": "^0.0.16",
     "@evenrealities/pretext": "^0.1.4"
   },
   "devDependencies": {
     "@evenrealities/evenhub-cli": "^0.1.14",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
   }
