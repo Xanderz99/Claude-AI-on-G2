@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Claude for G2</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Claude for G2</h1>
+        <div class="pills">
+          <span id="glassesStatus" class="pill" data-state="warn">Glasses: connecting</span>
+          <span id="inboxStatus" class="pill" data-state="warn">Shortcut inbox: connecting</span>
+        </div>
+      </header>
+
+      <p id="setupWarning" class="warning" hidden>
+        Add your Anthropic API key under Settings to start. You can create one at console.anthropic.com.
+      </p>
+
+      <section>
+        <div class="row">
+          <h2>Conversation</h2>
+          <button id="newChat" type="button" class="secondary">New chat</button>
+        </div>
+        <div id="log" class="log"></div>
+        <form id="askForm" class="ask">
+          <input id="askInput" type="text" placeholder="Type a question for the glasses" autocomplete="off" />
+          <button type="submit">Ask</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>iPhone Shortcut</h2>
+        <p>
+          Your Shortcut sends questions to this URL (keep it private: anyone with it can send questions to your
+          glasses):
+        </p>
+        <div class="url-box">
+          <code id="shortcutUrl"></code>
+          <button id="copyUrl" type="button" class="secondary">Copy</button>
+        </div>
+        <ol class="steps">
+          <li>Open <b>Shortcuts</b>, tap <b>+</b>, and name the new shortcut <b>Ask Claude</b>.</li>
+          <li>Add <b>Dictate Text</b> (or <b>Ask for Input</b> if you'd rather type).</li>
+          <li>
+            Add <b>Get Contents of URL</b>. Set the URL to the address above and tap <b>Show More</b>. Set Method to
+            <b>POST</b> and Request Body to <b>File</b>, then choose the <b>Dictated Text</b> variable.
+          </li>
+          <li>
+            Optional: add a header named <code>Title</code> with value <code>new</code> to start a fresh conversation
+            each time, or <code>show</code> to put text on the glasses without asking Claude.
+          </li>
+          <li>
+            Keep this app open on your glasses, then say <b>"Hey Siri, Ask Claude"</b>. You can also add the shortcut to
+            the Action Button or Back Tap.
+          </li>
+        </ol>
+        <button id="testShortcut" type="button" class="secondary">Send test message</button>
+      </section>
+
+      <section>
+        <h2>Settings</h2>
+        <form id="settingsForm" class="settings">
+          <label
+            >Anthropic API key
+            <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-..." />
+          </label>
+          <label
+            >Model
+            <select id="model"></select>
+          </label>
+          <label
+            >Effort
+            <select id="effort">
+              <option value="low">Low (fastest replies)</option>
+              <option value="medium">Medium</option>
+              <option value="high">High (most thorough)</option>
+            </select>
+          </label>
+          <label
+            >Follow-up memory (past questions sent for context)
+            <input id="historyTurns" type="number" min="0" max="20" />
+          </label>
+          <label
+            >Shortcut topic
+            <div class="inline">
+              <input id="topic" type="text" autocomplete="off" />
+              <button id="newTopic" type="button" class="secondary">New</button>
+            </div>
+          </label>
+          <label
+            >ntfy server
+            <input id="ntfyServer" type="url" />
+          </label>
+          <label
+            >Instructions for Claude
+            <textarea id="systemPrompt" rows="5"></textarea>
+          </label>
+          <button type="submit">Save settings</button>
+        </form>
+      </section>
+    </main>
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

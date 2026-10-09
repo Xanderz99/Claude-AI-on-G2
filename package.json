@@ -1,0 +1,29 @@
+{
+  "name": "claude-on-g2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Even Hub app that puts Claude on Even Realities G2 glasses, driven by iPhone Shortcuts / Siri.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "qr": "evenhub qr --port 5173",
+    "pack": "npm run build && evenhub pack app.json dist --output claude-on-g2.ehpk"
+  },
+  "engines": {
+    "node": "^20.0.0 || >=22.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
+    "@evenrealities/even_hub_sdk": "^0.0.16",
+    "@evenrealities/pretext": "^0.1.4"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.1.14",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}
