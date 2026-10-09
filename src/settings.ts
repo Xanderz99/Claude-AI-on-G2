@@ -4,7 +4,11 @@ export interface Settings {
   /** ntfy topic the iPhone Shortcut publishes to. Acts as a shared secret, so keep it random. */
   topic: string;
   ntfyServer: string;
+  /** Shortcut that the glasses run to transcribe a recording and ask Claude. */
+  voiceShortcut: string;
 }
+
+export const DEFAULT_VOICE_SHORTCUT = 'G2 Voice to Claude';
 
 export function randomTopic(): string {
   const bytes = new Uint8Array(12);
@@ -36,7 +40,8 @@ export class SettingsStore {
     }
     const settings: Settings = {
       topic: saved.topic || randomTopic(),
-      ntfyServer: saved.ntfyServer || 'https://ntfy.sh',
+      ntfyServer: saved.ntfyServer || import.meta.env.VITE_NTFY_SERVER || 'https://ntfy.sh',
+      voiceShortcut: saved.voiceShortcut || DEFAULT_VOICE_SHORTCUT,
     };
     if (settings.topic !== saved.topic) await this.save(settings);
     return settings;

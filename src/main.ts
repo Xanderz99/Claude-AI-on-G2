@@ -1,15 +1,19 @@
-import { waitForEvenAppBridge, type EvenAppBridge } from '@evenrealities/even_hub_sdk';
+import { AudioInputSource, waitForEvenAppBridge, type EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import { GlassesView, type GlassesAction } from './glasses';
 import { toPlainText } from './paginate';
-import { Inbox, publish, type InboxMessage, type InboxStatus } from './inbox';
-import { SettingsStore, randomTopic, type Settings } from './settings';
+import { Inbox, publish, runShortcutUrl, uploadAudio, type InboxMessage, type InboxStatus } from './inbox';
+import { Recorder } from './recorder';
+import { DEFAULT_VOICE_SHORTCUT, SettingsStore, randomTopic, type Settings } from './settings';
 import './style.css';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const READY_TEXT =
-  'Ready. Run your "Ask Claude" Shortcut on your iPhone, or say "Hey Siri, Ask Claude on G2".\n\n' +
-  'Tap or swipe: next page\nDouble-tap: clear';
+  'Ready.\n\nDouble-tap: talk to Claude\nTap or swipe: next page\n\n' +
+  'Or say "Hey Siri, Ask Claude on G2" on your iPhone.';
+
+/** If the Shortcut hasn't reported back by then, suggest running it from the phone. */
+const SHORTCUT_TIMEOUT_MS = 45_000;
 
 /** An answer arriving within this long of a question is treated as its reply. */
 const PENDING_MS = 5 * 60_000;
@@ -17,7 +21,13 @@ const PENDING_MS = 5 * 60_000;
 let settings: Settings;
 let store: SettingsStore;
 let glasses: GlassesView | null = null;
+let bridge: EvenAppBridge | null = null;
 let pending: { question: string; at: number; answerEl: HTMLElement } | null = null;
+let recorder: Recorder | null = null;
+let voiceTimer: ReturnType<typeof setTimeout> | null = null;
+let talkWatchdog: ReturnType<typeof setInterval> | null = null;
+/** Shortcut link for the last recording, for the phone's "Run Shortcut" fallback button. */
+let lastVoiceLink = '';
 
 /** Resolves to the Even App bridge, or null when running in a plain browser (dev preview). */
 async function connectBridge(): Promise<EvenAppBridge | null> {
@@ -75,13 +85,16 @@ function shortcutUrl() {
 function fillSettingsForm() {
   $<HTMLInputElement>('topic').value = settings.topic;
   $<HTMLInputElement>('ntfyServer').value = settings.ntfyServer;
-  $('shortcutUrl').textContent = shortcutUrl();
+  $<HTMLInputElement>('voiceShortcut').value = settings.voiceShortcut;
+  for (const el of document.querySelectorAll('.shortcut-url')) el.textContent = shortcutUrl();
+  for (const el of document.querySelectorAll('.voice-shortcut-name')) el.textContent = settings.voiceShortcut;
 }
 
 async function saveSettingsFromForm() {
   settings = {
     topic: $<HTMLInputElement>('topic').value.trim() || randomTopic(),
     ntfyServer: $<HTMLInputElement>('ntfyServer').value.trim() || 'https://ntfy.sh',
+    voiceShortcut: $<HTMLInputElement>('voiceShortcut').value.trim() || DEFAULT_VOICE_SHORTCUT,
   };
   await store.save(settings);
   fillSettingsForm();
@@ -105,6 +118,7 @@ function clearAll() {
 }
 
 function onInboxMessage(msg: InboxMessage) {
+  shortcutReported();
   switch (msg.kind) {
     case 'clear':
       return clearAll();
@@ -131,8 +145,104 @@ function onInboxStatus(status: InboxStatus) {
   else setPill('inboxStatus', 'Shortcut inbox: offline', 'off');
 }
 
-function onGlassesAction(action: GlassesAction) {
-  if (action === 'clear') clearAll();
+function onGlassesAction(action: GlassesAction): boolean {
+  switch (action) {
+    case 'talk':
+      if (recorder) void finishTalk();
+      else void startTalk();
+      return true;
+    case 'tap':
+      // While recording, a tap means "I'm done talking".
+      if (!recorder) return false;
+      void finishTalk();
+      return true;
+    case 'clear':
+      clearAll();
+      return true;
+    case 'exit':
+      if (recorder) void stopMic();
+      return true;
+  }
+}
+
+// ---------- Voice from the glasses mic ----------
+
+async function startTalk() {
+  if (!bridge || !glasses) return;
+  const rec = new Recorder();
+  recorder = rec;
+  glasses.show('Listening...', 'Speak now.\n\nTap when you are done, or just pause.', 'rec');
+  const ok = await bridge.audioControl(true, AudioInputSource.Glasses);
+  if (!ok) {
+    recorder = null;
+    glasses.show('Claude', 'Could not turn on the glasses microphone. Try again.', 'error');
+    return;
+  }
+  // Stop even if the mic never delivers audio.
+  const started = Date.now();
+  talkWatchdog = setInterval(() => {
+    if (recorder !== rec) return;
+    const elapsed = Date.now() - started;
+    if (elapsed > rec.maxMs || (!rec.hasSpeech && elapsed > rec.noSpeechMs + 1000)) void finishTalk();
+  }, 500);
+}
+
+async function stopMic(): Promise<Recorder | null> {
+  const rec = recorder;
+  recorder = null;
+  if (talkWatchdog) clearInterval(talkWatchdog);
+  talkWatchdog = null;
+  await bridge?.audioControl(false).catch(() => false);
+  return rec;
+}
+
+function onMicFrame(pcm: Uint8Array) {
+  if (recorder?.push(pcm)) void finishTalk();
+}
+
+async function finishTalk() {
+  const rec = await stopMic();
+  if (!rec) return;
+  if (!rec.hasSpeech) {
+    glasses?.show('Claude', "Didn't hear anything.\n\nDouble-tap to try again.");
+    return;
+  }
+  glasses?.show('Sending...', 'Uploading your question.', 'busy');
+  try {
+    const audioUrl = await uploadAudio(settings.ntfyServer, settings.topic, rec.toWav());
+    lastVoiceLink = runShortcutUrl(settings.voiceShortcut, audioUrl);
+    $('runVoiceShortcut').hidden = false;
+    glasses?.show('Asking Claude...', `Running the "${settings.voiceShortcut}" Shortcut on your iPhone.`, 'thinking');
+    voiceTimer = setTimeout(() => {
+      voiceTimer = null;
+      glasses?.show(
+        'Waiting for your iPhone',
+        `The Shortcut hasn't answered yet. If it didn't start, open the Claude page in the Even app and tap "Run Shortcut".`,
+      );
+    }, SHORTCUT_TIMEOUT_MS);
+    openShortcut(lastVoiceLink);
+  } catch (err) {
+    glasses?.show('Claude', err instanceof Error ? err.message : String(err), 'error');
+  }
+}
+
+/**
+ * Ask iOS to run the Shortcut. iOS only allows this while the Even app is in the
+ * foreground. A hidden iframe is used because navigating the page itself to an
+ * unsupported scheme would replace (and kill) this app.
+ */
+function openShortcut(link: string) {
+  const frame = document.createElement('iframe');
+  frame.style.display = 'none';
+  frame.src = link;
+  document.body.append(frame);
+  setTimeout(() => frame.remove(), 2000);
+}
+
+function shortcutReported() {
+  if (voiceTimer) clearTimeout(voiceTimer);
+  voiceTimer = null;
+  $('runVoiceShortcut').hidden = true;
 }
 
 const inbox = new Inbox(onInboxMessage, onInboxStatus);
@@ -140,7 +250,7 @@ const inbox = new Inbox(onInboxMessage, onInboxStatus);
 // ---------- Boot ----------
 
 async function boot() {
-  const bridge = await connectBridge();
+  bridge = await connectBridge();
   store = new SettingsStore(bridge);
   settings = await store.load();
   fillSettingsForm();
@@ -151,6 +261,9 @@ async function boot() {
     const ok = await glasses.start();
     setPill('glassesStatus', ok ? 'Glasses: connected' : 'Glasses: not available', ok ? 'ok' : 'off');
     if (ok) glasses.show('Claude', READY_TEXT);
+    bridge.onEvenHubEvent((e) => {
+      if (e.audioEvent && recorder) onMicFrame(e.audioEvent.audioPcm);
+    });
   } else {
     glasses = null;
     setPill('glassesStatus', 'Glasses: browser preview', 'off');
@@ -173,6 +286,9 @@ async function boot() {
     } catch {
       flash('Long-press the URL to copy it');
     }
+  });
+  $('runVoiceShortcut').addEventListener('click', () => {
+    if (lastVoiceLink) openShortcut(lastVoiceLink);
   });
   $('testShortcut').addEventListener('click', async () => {
     try {

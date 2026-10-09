@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { eventText, parseKind } from './inbox';
+import { eventText, parseKind, runShortcutUrl } from './inbox';
 
 describe('parseKind', () => {
   it('treats untitled messages as answers', () => {
@@ -35,5 +35,13 @@ describe('eventText', () => {
     );
     expect(text).toBe('a long answer');
     expect(fetchFn).toHaveBeenCalledWith('https://ntfy.sh/file/abc.txt');
+  });
+});
+
+describe('runShortcutUrl', () => {
+  it('encodes the shortcut name and input', () => {
+    expect(runShortcutUrl('G2 Voice to Claude', 'https://ntfy.sh/file/a b.wav')).toBe(
+      'shortcuts://run-shortcut?name=G2%20Voice%20to%20Claude&input=text&text=https%3A%2F%2Fntfy.sh%2Ffile%2Fa%20b.wav',
+    );
   });
 });

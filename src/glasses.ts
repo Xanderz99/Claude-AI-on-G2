@@ -25,13 +25,14 @@ export const LINES_PER_PAGE = Math.floor((BODY_H - 2 * PAD) / LINE_H);
 const HEADER = { id: 1, name: 'header' };
 const BODY = { id: 2, name: 'body' };
 
-export const MENU = { clear: 1, firstPage: 2 } as const;
+export const MENU = { clear: 1, firstPage: 2, talk: 3 } as const;
 
-export type GlassesAction = 'clear' | 'exit';
+/** 'tap' is offered first; return true from the handler to consume it instead of paging. */
+export type GlassesAction = 'tap' | 'talk' | 'clear' | 'exit';
 
 /**
  * Owns the glasses page: a one-line header (question + page number) and a
- * paged body. Swipe forward/back (or tap) to page, double-tap to clear,
+ * paged body. Swipe forward/back (or tap) to page, double-tap to talk,
  * long-press the temple for the menu.
  */
 export class GlassesView {
@@ -46,7 +47,7 @@ export class GlassesView {
 
   constructor(
     private bridge: EvenAppBridge,
-    private onAction: (action: GlassesAction) => void,
+    private onAction: (action: GlassesAction) => boolean | void,
   ) {}
 
   async start(): Promise<boolean> {
@@ -82,6 +83,7 @@ export class GlassesView {
         ],
         menuObject: new MenuContainerProperty({
           menuItems: [
+            new MenuItemProperty({ itemID: MENU.talk, itemName: 'Talk to Claude' }),
             new MenuItemProperty({ itemID: MENU.firstPage, itemName: 'First page' }),
             new MenuItemProperty({ itemID: MENU.clear, itemName: 'Clear' }),
           ],
@@ -113,6 +115,7 @@ export class GlassesView {
     if (event.menuItemClickEvent) {
       const id = event.menuItemClickEvent.itemID;
       if (id === MENU.clear) this.onAction('clear');
+      else if (id === MENU.talk) this.onAction('talk');
       else if (id === MENU.firstPage) this.turnPage(-this.page);
       return;
     }
@@ -121,15 +124,18 @@ export class GlassesView {
     // Protobuf drops zero-valued fields, so a missing eventType is a click (0).
     const type = ev.eventType ?? OsEventTypeList.CLICK_EVENT;
     switch (type) {
-      case OsEventTypeList.SCROLL_BOTTOM_EVENT:
       case OsEventTypeList.CLICK_EVENT:
+        if (this.onAction('tap') === true) break;
+        this.turnPage(1);
+        break;
+      case OsEventTypeList.SCROLL_BOTTOM_EVENT:
         this.turnPage(1);
         break;
       case OsEventTypeList.SCROLL_TOP_EVENT:
         this.turnPage(-1);
         break;
       case OsEventTypeList.DOUBLE_CLICK_EVENT:
-        this.onAction('clear');
+        this.onAction('talk');
         break;
       case OsEventTypeList.SYSTEM_EXIT_EVENT:
       case OsEventTypeList.ABNORMAL_EXIT_EVENT:

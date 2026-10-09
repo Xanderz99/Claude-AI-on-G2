@@ -102,3 +102,29 @@ export async function publish(server: string, topic: string, text: string, title
   });
   if (!res.ok) throw new Error(`ntfy returned ${res.status}`);
 }
+
+/** Topic that voice recordings are uploaded to, kept apart so they never show up as answers. */
+export function micTopic(topic: string): string {
+  return `${topic}-mic`;
+}
+
+/**
+ * Upload a recording as an ntfy attachment and return its download URL.
+ * ntfy.sh deletes attachments automatically after a few hours.
+ */
+export async function uploadAudio(server: string, topic: string, wav: Uint8Array): Promise<string> {
+  const res = await fetch(`${server.replace(/\/+$/, '')}/${encodeURIComponent(micTopic(topic))}`, {
+    method: 'PUT',
+    body: new Blob([wav as BlobPart], { type: 'audio/wav' }),
+    headers: { Filename: 'question.wav' },
+  });
+  if (!res.ok) throw new Error(`Upload failed (ntfy ${res.status})`);
+  const data = (await res.json()) as { attachment?: { url?: string } };
+  if (!data.attachment?.url) throw new Error('Upload failed (no attachment URL)');
+  return data.attachment.url;
+}
+
+/** The URL that runs an iPhone Shortcut, passing it text as input. */
+export function runShortcutUrl(name: string, input: string): string {
+  return `shortcuts://run-shortcut?name=${encodeURIComponent(name)}&input=text&text=${encodeURIComponent(input)}`;
+}

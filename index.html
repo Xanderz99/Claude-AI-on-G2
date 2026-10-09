@@ -25,41 +25,77 @@
           <button id="clear" type="button" class="secondary">Clear</button>
         </div>
         <div id="log" class="log"></div>
+        <button id="runVoiceShortcut" type="button" hidden>Run Shortcut for your last recording</button>
       </section>
 
       <section>
-        <h2>Set up the iPhone Shortcut</h2>
-        <p>You need the <b>Claude</b> app from the App Store, signed in, and iOS 18 or later. Your private address:</p>
+        <h2>Your private address</h2>
+        <p>
+          Both Shortcuts below send text to this address. You need the <b>Claude</b> app from the App Store, signed in,
+          on iOS 18 or later.
+        </p>
         <div class="url-box">
-          <code id="shortcutUrl"></code>
+          <code class="shortcut-url"></code>
           <button id="copyUrl" type="button" class="secondary">Copy</button>
         </div>
-        <ol class="steps">
-          <li>Open <b>Shortcuts</b>, tap <b>+</b>, and name the shortcut <b>Ask Claude on G2</b>.</li>
-          <li>Add <b>Dictate Text</b> (or <b>Ask for Input</b> if you'd rather type).</li>
-          <li>
-            <i>Optional, shows your question while Claude thinks:</i> add <b>Get Contents of URL</b> with the address
-            above. Tap <b>Show More</b>, set Method to <b>POST</b>, add a header <code>Title</code> =
-            <code>question</code>, and set Request Body to <b>File</b> &rarr; <b>Dictated Text</b>.
-          </li>
-          <li>
-            Add the Claude app's <b>Ask Claude</b> action. For the prompt, use <b>Dictated Text</b>. You can add
-            <i>"Answer briefly in plain text."</i> to get answers that suit the small display.
-          </li>
-          <li>
-            Add another <b>Get Contents of URL</b> with the same address, Method <b>POST</b>, and Request Body
-            <b>File</b> &rarr; the <b>Response</b> from Ask Claude. No header is needed.
-          </li>
-          <li>
-            Keep this app open on your glasses and say <b>"Hey Siri, Ask Claude on G2"</b>. You can also put the
-            shortcut on the Action Button or Back Tap.
-          </li>
-        </ol>
         <p class="muted">
-          Keep the address private: anyone who has it can put text on your glasses. To show other text, POST it to the
-          same address. Use the header <code>Title</code> = <code>clear</code> to clear the display.
+          Keep it private: anyone who has it can put text on your glasses. Any Shortcut can POST text here. Use the
+          header
+          <code>Title</code> = <code>question</code> for a question or <code>clear</code> to clear the display.
         </p>
         <button id="testShortcut" type="button" class="secondary">Send test message</button>
+      </section>
+
+      <section>
+        <h2>Talk from the glasses (double-tap)</h2>
+        <p>
+          Double-tap the glasses to record from the G2 microphone. Tap again, or just pause, to stop. The app then runs
+          the Shortcut <b class="voice-shortcut-name"></b>, which transcribes your voice, asks Claude, and sends the
+          answer back to the glasses.
+        </p>
+        <ol class="steps">
+          <li>In <b>Shortcuts</b>, make a new shortcut named exactly <b class="voice-shortcut-name"></b>.</li>
+          <li>
+            Add <b>Get Contents of URL</b> and set the URL to <b>Shortcut Input</b>. This downloads your recording.
+          </li>
+          <li>Add <b>Transcribe Audio</b> with <b>Contents of URL</b> as its input.</li>
+          <li>
+            Add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, header <code>Title</code> =
+            <code>question</code>, Request Body <b>File</b> &rarr; <b>Transcription</b>.
+          </li>
+          <li>
+            Add the Claude app's <b>Ask Claude</b> action with <b>Transcription</b> as the prompt. You can add
+            <i>"Answer briefly in plain text."</i>
+          </li>
+          <li>
+            Add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, Request Body <b>File</b> &rarr;
+            <b>Response</b>.
+          </li>
+          <li><i>Optional:</i> add <b>Open App</b> &rarr; <b>Even</b> at the end so you land back in the Even app.</li>
+        </ol>
+        <p class="muted">
+          iOS only lets an app open a Shortcut while the app is on screen. Your iPhone has to be unlocked with the Even
+          app open. If the Shortcut doesn't start, tap <b>Run Shortcut</b> above. Recordings are uploaded to your
+          private topic on ntfy and deleted automatically after a few hours.
+        </p>
+      </section>
+
+      <section>
+        <h2>Ask with Siri (iPhone mic)</h2>
+        <ol class="steps">
+          <li>Make a shortcut named <b>Ask Claude on G2</b>.</li>
+          <li>Add <b>Dictate Text</b> (or <b>Ask for Input</b> if you'd rather type).</li>
+          <li>
+            <i>Optional:</i> add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, header
+            <code>Title</code> = <code>question</code>, Request Body <b>File</b> &rarr; <b>Dictated Text</b>.
+          </li>
+          <li>Add <b>Ask Claude</b> with <b>Dictated Text</b> as the prompt.</li>
+          <li>
+            Add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, Request Body <b>File</b> &rarr;
+            <b>Response</b>.
+          </li>
+          <li>Say <b>"Hey Siri, Ask Claude on G2"</b>. This works with your iPhone locked or in your pocket.</li>
+        </ol>
       </section>
 
       <section>
@@ -71,6 +107,10 @@
               <input id="topic" type="text" autocomplete="off" />
               <button id="newTopic" type="button" class="secondary">New</button>
             </div>
+          </label>
+          <label
+            >Shortcut that double-tap runs
+            <input id="voiceShortcut" type="text" autocomplete="off" />
           </label>
           <label
             >ntfy server

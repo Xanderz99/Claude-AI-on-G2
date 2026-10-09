@@ -47,10 +47,12 @@ describe('GlassesView', () => {
   it('reports double-tap and menu actions', async () => {
     const { bridge, emit } = fakeBridge();
     const actions: GlassesAction[] = [];
-    const view = new GlassesView(bridge as any, (a) => actions.push(a));
+    const view = new GlassesView(bridge as any, (a) => {
+      actions.push(a);
+    });
     await view.start();
     emit({ sysEvent: { eventType: OsEventTypeList.DOUBLE_CLICK_EVENT } as any });
     emit({ menuItemClickEvent: { itemID: MENU.clear } as any });
-    expect(actions).toEqual(['clear', 'clear']);
+    expect(actions).toEqual(['talk', 'clear']);
   });
 });
