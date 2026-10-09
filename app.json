@@ -9,8 +9,8 @@
   "permissions": [
     {
       "name": "network",
-      "desc": "Receives Claude answers from your iPhone Shortcut through the ntfy.sh relay so they can be shown on your glasses.",
-      "whitelist": ["https://ntfy.sh"]
+      "desc": "Receives Claude answers from your iPhone Shortcut through the ntfy.sh relay, and (optionally) transcribes and answers questions with Groq.",
+      "whitelist": ["https://ntfy.sh", "https://api.groq.com"]
     }
   ],
   "supported_languages": ["en"]

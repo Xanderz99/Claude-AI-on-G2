@@ -14,8 +14,8 @@
           <span id="inboxStatus" class="pill" data-state="warn">Shortcut inbox: connecting</span>
         </div>
         <p class="muted">
-          Uses the Claude app on your iPhone through Shortcuts. You don't need an API key; answers come from your own
-          Claude account.
+          Hold the temple and ask, like Even AI. Answers come from the Claude app on your iPhone (your own Claude plan,
+          through Shortcuts), or from Groq's free models. No paid API key needed.
         </p>
       </header>
 
@@ -54,7 +54,22 @@
           iPhone runs the Shortcut <b class="voice-shortcut-name"></b>, which transcribes your voice, asks Claude, and
           sends the answer back to the glasses.
         </p>
-        <ol class="steps">
+        <p class="groq-hint">
+          With a Groq key in Settings, your phone transcribes the question itself, so use this shorter Shortcut:
+        </p>
+        <ol class="steps recipe-text">
+          <li>In <b>Shortcuts</b>, make a new shortcut named exactly <b class="voice-shortcut-name"></b>.</li>
+          <li>
+            Add the Claude app's <b>Ask Claude</b> action with <b>Shortcut Input</b> as the prompt. You can add
+            <i>"Answer briefly in plain text."</i>
+          </li>
+          <li>
+            Add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, Request Body <b>File</b> &rarr;
+            <b>Response</b>.
+          </li>
+          <li><i>Optional:</i> add <b>Open App</b> &rarr; <b>Even</b> at the end so you land back in the Even app.</li>
+        </ol>
+        <ol class="steps recipe-audio">
           <li>In <b>Shortcuts</b>, make a new shortcut named exactly <b class="voice-shortcut-name"></b>.</li>
           <li>
             Add <b>Get Contents of URL</b> and set the URL to <b>Shortcut Input</b>. This downloads your recording.
@@ -76,8 +91,8 @@
         </ol>
         <p class="muted">
           iOS only lets an app open a Shortcut while the app is on screen. Your iPhone has to be unlocked with the Even
-          app open. If the Shortcut doesn't start, tap <b>Run Shortcut</b> above. Recordings are uploaded to your
-          private topic on ntfy and deleted automatically after a few hours.
+          app open. If the Shortcut doesn't start, tap <b>Run Shortcut</b> above. Without a Groq key, recordings are
+          uploaded to your private topic on ntfy and deleted automatically after a few hours.
         </p>
       </section>
 
@@ -95,8 +110,26 @@
             Add <b>Get Contents of URL</b>: the address above, Method <b>POST</b>, Request Body <b>File</b> &rarr;
             <b>Response</b>.
           </li>
-          <li>Say <b>"Hey Siri, Ask Claude on G2"</b>. This works with your iPhone locked or in your pocket.</li>
+          <li>
+            Say <b>"Hey Siri, Ask Claude on G2"</b>. Try it with your iPhone locked: it may run without unlocking,
+            depending on the Claude app.
+          </li>
         </ol>
+      </section>
+
+      <section>
+        <h2>Groq (free, optional)</h2>
+        <p>
+          A free key from <b>console.groq.com</b> makes this app faster and more reliable. Your question is transcribed
+          on the phone with Groq's Whisper, and appears on the glasses as soon as you let go. Recordings are no longer
+          uploaded to ntfy, and Apple's Transcribe Audio isn't needed.
+        </p>
+        <p>
+          You can also set <b>Answers from</b> to <b>Groq</b>. Answers then come straight from Groq's free open models
+          (not Claude) and appear word by word. No Shortcut is involved, so this works with your iPhone locked in your
+          pocket, like Even AI. The free tier has daily limits, and Groq may use a model it later retires; pick another
+          in Settings if that happens.
+        </p>
       </section>
 
       <section>
@@ -110,7 +143,22 @@
             </div>
           </label>
           <label
-            >Shortcut that double-tap runs
+            >Groq API key (free, optional)
+            <input id="groqKey" type="password" autocomplete="off" placeholder="gsk_..." />
+          </label>
+          <label
+            >Answers from
+            <select id="engine">
+              <option value="claude">Claude app (via Shortcut, phone unlocked)</option>
+              <option value="groq">Groq (hands-free, phone can stay locked)</option>
+            </select>
+          </label>
+          <label class="groq-only"
+            >Groq model
+            <select id="groqModel"></select>
+          </label>
+          <label
+            >Shortcut that the glasses run
             <input id="voiceShortcut" type="text" autocomplete="off" />
           </label>
           <label class="check">

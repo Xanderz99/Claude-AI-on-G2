@@ -8,7 +8,14 @@ export interface Settings {
   voiceShortcut: string;
   /** Start listening as soon as the app is opened from the glasses menu, like Even AI. */
   listenOnLaunch: boolean;
+  /** Free key from console.groq.com. Enables fast in-app transcription and the Groq answer engine. */
+  groqKey: string;
+  /** Who answers: the Claude app through the Shortcut, or Groq directly (hands-free, phone can stay locked). */
+  engine: Engine;
+  groqModel: string;
 }
+
+export type Engine = 'claude' | 'groq';
 
 export const DEFAULT_VOICE_SHORTCUT = 'G2 Voice to Claude';
 
@@ -45,6 +52,9 @@ export class SettingsStore {
       ntfyServer: saved.ntfyServer || import.meta.env.VITE_NTFY_SERVER || 'https://ntfy.sh',
       voiceShortcut: saved.voiceShortcut || DEFAULT_VOICE_SHORTCUT,
       listenOnLaunch: saved.listenOnLaunch ?? true,
+      groqKey: saved.groqKey ?? '',
+      engine: saved.engine === 'groq' ? 'groq' : 'claude',
+      groqModel: saved.groqModel || 'openai/gpt-oss-20b',
     };
     if (settings.topic !== saved.topic) await this.save(settings);
     return settings;

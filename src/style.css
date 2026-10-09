@@ -191,3 +191,9 @@ label.check {
 label.check input {
   width: auto;
 }
+body[data-groq='on'] .recipe-audio,
+body[data-groq='off'] .recipe-text,
+body[data-groq='off'] .groq-hint,
+body[data-engine='claude'] .groq-only {
+  display: none;
+}

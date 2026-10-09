@@ -85,7 +85,7 @@ export class GlassesView {
           menuItems: [
             new MenuItemProperty({ itemID: MENU.talk, itemName: 'Talk to Claude' }),
             new MenuItemProperty({ itemID: MENU.firstPage, itemName: 'First page' }),
-            new MenuItemProperty({ itemID: MENU.clear, itemName: 'Clear' }),
+            new MenuItemProperty({ itemID: MENU.clear, itemName: 'New chat' }),
           ],
         }),
       }),

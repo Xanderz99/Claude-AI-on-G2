@@ -3,7 +3,16 @@ import { GlassesView, type GlassesAction } from './glasses';
 import { toPlainText } from './paginate';
 import { Inbox, publish, runShortcutUrl, uploadAudio, type InboxMessage, type InboxStatus } from './inbox';
 import { Recorder, levelMeter } from './recorder';
-import { DEFAULT_VOICE_SHORTCUT, SettingsStore, randomTopic, type Settings } from './settings';
+import {
+  DEFAULT_CHAT_MODELS,
+  describeGroqError,
+  listChatModels,
+  streamAnswer,
+  transcribe,
+  type AnswerHandle,
+  type ChatTurn,
+} from './groq';
+import { DEFAULT_VOICE_SHORTCUT, SettingsStore, randomTopic, type Engine, type Settings } from './settings';
 import './style.css';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -27,6 +36,9 @@ let recorder: Recorder | null = null;
 let voiceTimer: ReturnType<typeof setTimeout> | null = null;
 let talkWatchdog: ReturnType<typeof setInterval> | null = null;
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
+/** Groq-mode conversation, so follow-up questions have context. Cleared by New chat. */
+let groqHistory: ChatTurn[] = [];
+let currentAnswer: AnswerHandle | null = null;
 /** Set when the app was opened from the glasses menu; listening then starts right away. */
 let launchedFromGlasses = false;
 /** Shortcut link for the last recording, for the phone's "Run Shortcut" fallback button. */
@@ -90,21 +102,39 @@ function fillSettingsForm() {
   $<HTMLInputElement>('ntfyServer').value = settings.ntfyServer;
   $<HTMLInputElement>('voiceShortcut').value = settings.voiceShortcut;
   $<HTMLInputElement>('listenOnLaunch').checked = settings.listenOnLaunch;
+  $<HTMLInputElement>('groqKey').value = settings.groqKey;
+  $<HTMLSelectElement>('engine').value = settings.engine;
+  fillModelPicker(DEFAULT_CHAT_MODELS);
+  document.body.dataset.engine = settings.engine;
+  document.body.dataset.groq = settings.groqKey ? 'on' : 'off';
   for (const el of document.querySelectorAll('.shortcut-url')) el.textContent = shortcutUrl();
   for (const el of document.querySelectorAll('.voice-shortcut-name')) el.textContent = settings.voiceShortcut;
 }
 
 async function saveSettingsFromForm() {
+  const oldAddress = shortcutUrl();
   settings = {
     topic: $<HTMLInputElement>('topic').value.trim() || randomTopic(),
     ntfyServer: $<HTMLInputElement>('ntfyServer').value.trim() || 'https://ntfy.sh',
     voiceShortcut: $<HTMLInputElement>('voiceShortcut').value.trim() || DEFAULT_VOICE_SHORTCUT,
     listenOnLaunch: $<HTMLInputElement>('listenOnLaunch').checked,
+    groqKey: $<HTMLInputElement>('groqKey').value.trim(),
+    engine: $<HTMLSelectElement>('engine').value as Engine,
+    groqModel: $<HTMLSelectElement>('groqModel').value || 'openai/gpt-oss-20b',
   };
+  if (settings.engine === 'groq' && !settings.groqKey) {
+    settings.engine = 'claude';
+    flash('Add a Groq key to use Groq answers');
+  }
   await store.save(settings);
   fillSettingsForm();
-  inbox.connect(settings.ntfyServer, settings.topic);
-  flash('Saved. Update the URL in your Shortcut.');
+  void loadGroqModels();
+  if (shortcutUrl() !== oldAddress) {
+    inbox.connect(settings.ntfyServer, settings.topic);
+    flash('Saved. Update the address in your Shortcuts.');
+  } else {
+    flash('Saved');
+  }
 }
 
 function flash(text: string) {
@@ -118,6 +148,8 @@ function flash(text: string) {
 
 function clearAll() {
   pending = null;
+  groqHistory = [];
+  currentAnswer?.cancel();
   stopThinking();
   glasses?.show('Claude', READY_TEXT);
   clearLog();
@@ -156,6 +188,7 @@ function onGlassesAction(action: GlassesAction): boolean {
   switch (action) {
     case 'holdStart':
       // Like Even AI: press and hold to talk...
+      currentAnswer?.cancel();
       if (!recorder) void startTalk(true);
       return true;
     case 'holdEnd':
@@ -175,6 +208,7 @@ function onGlassesAction(action: GlassesAction): boolean {
       clearAll();
       return true;
     case 'exit':
+      currentAnswer?.cancel();
       stopThinking();
       if (recorder) void stopMic();
       return true;
@@ -241,23 +275,116 @@ async function finishTalk() {
     glasses?.show('Claude', "Didn't hear anything.\n\nHold the temple and speak, then let go.");
     return;
   }
-  startThinking('Claude', 'Sending your question to Claude on your iPhone.');
-  try {
-    const audioUrl = await uploadAudio(settings.ntfyServer, settings.topic, rec.toWav());
-    lastVoiceLink = runShortcutUrl(settings.voiceShortcut, audioUrl);
-    $('runVoiceShortcut').hidden = false;
-    voiceTimer = setTimeout(() => {
-      voiceTimer = null;
+  if (!settings.groqKey) {
+    // No Groq key: the iPhone Shortcut downloads the recording and transcribes it.
+    startThinking('Claude', 'Sending your question to Claude on your iPhone.');
+    try {
+      const audioUrl = await uploadAudio(settings.ntfyServer, settings.topic, rec.toWav());
+      launchShortcut(audioUrl);
+    } catch (err) {
       stopThinking();
-      glasses?.show(
-        'Waiting for your iPhone',
-        `The Shortcut hasn't answered yet. Unlock your iPhone and open the Even app. If it still doesn't start, tap "Run Shortcut" on the Claude page.`,
-      );
-    }, SHORTCUT_TIMEOUT_MS);
-    openShortcut(lastVoiceLink);
+      glasses?.show('Claude', err instanceof Error ? err.message : String(err), 'error');
+    }
+    return;
+  }
+
+  // Groq key: transcribe right here, so the question shows straight away.
+  startThinking(engineName(), 'Transcribing...');
+  let question: string;
+  try {
+    question = await transcribe(settings.groqKey, rec.toWav());
   } catch (err) {
     stopThinking();
-    glasses?.show('Claude', err instanceof Error ? err.message : String(err), 'error');
+    glasses?.show(engineName(), describeGroqError(err), 'error');
+    return;
+  }
+  if (!question) {
+    stopThinking();
+    glasses?.show(engineName(), "Didn't catch that.\n\nHold the temple and try again.");
+    return;
+  }
+  if (settings.engine === 'groq') return askGroq(question);
+
+  const answerEl = addLogEntry(question, 'Asking Claude...');
+  pending = { question, at: Date.now(), answerEl };
+  startThinking(`> ${question}`, 'Asking Claude on your iPhone...');
+  launchShortcut(question);
+}
+
+function engineName(): string {
+  return settings.engine === 'groq' ? 'Groq' : 'Claude';
+}
+
+/** Run the voice Shortcut with a recording URL or (with a Groq key) the transcribed question. */
+function launchShortcut(input: string) {
+  lastVoiceLink = runShortcutUrl(settings.voiceShortcut, input);
+  $('runVoiceShortcut').hidden = false;
+  voiceTimer = setTimeout(() => {
+    voiceTimer = null;
+    stopThinking();
+    glasses?.show(
+      'Waiting for your iPhone',
+      `The Shortcut hasn't answered yet. Unlock your iPhone and open the Even app. If it still doesn't start, tap "Run Shortcut" on the Claude page.`,
+    );
+  }, SHORTCUT_TIMEOUT_MS);
+  openShortcut(lastVoiceLink);
+}
+
+/** Answer with Groq directly: no Shortcut, so it works with the phone locked. Streams onto the glasses. */
+async function askGroq(question: string) {
+  currentAnswer?.cancel();
+  const title = `> ${question}`;
+  const answerEl = addLogEntry(question, '...');
+  startThinking(title, '');
+  let started = false;
+  const handle = streamAnswer(settings.groqKey, settings.groqModel, groqHistory, question, (text) => {
+    if (!started) {
+      started = true;
+      stopThinking();
+    }
+    glasses?.show(title, text);
+    answerEl.textContent = toPlainText(text);
+  });
+  currentAnswer = handle;
+  try {
+    const answer = await handle.done;
+    if (currentAnswer !== handle) return;
+    groqHistory = [...groqHistory, { question, answer }].slice(-6);
+    stopThinking();
+    glasses?.show(title, answer || '(no answer)');
+    answerEl.textContent = toPlainText(answer);
+  } catch (err) {
+    if (currentAnswer !== handle) return;
+    stopThinking();
+    const msg = describeGroqError(err);
+    glasses?.show(title, msg, 'error');
+    answerEl.textContent = msg;
+  } finally {
+    if (currentAnswer === handle) currentAnswer = null;
+  }
+}
+
+function fillModelPicker(models: string[]) {
+  const picker = $<HTMLSelectElement>('groqModel');
+  const ids = [...new Set([settings.groqModel, ...models])];
+  picker.replaceChildren(
+    ...ids.map((id) => {
+      const o = document.createElement('option');
+      o.value = o.textContent = id;
+      return o;
+    }),
+  );
+  picker.value = settings.groqModel;
+}
+
+/** Groq retires models often, so show the ones this key can use right now. */
+async function loadGroqModels() {
+  if (!settings.groqKey) return;
+  try {
+    const models = await listChatModels(settings.groqKey);
+    if (models.length) fillModelPicker(models);
+  } catch {
+    // Keep the defaults; errors show up when asking.
   }
 }
 
@@ -328,6 +455,7 @@ async function boot() {
   }
 
   inbox.connect(settings.ntfyServer, settings.topic);
+  void loadGroqModels();
 
   $('settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
