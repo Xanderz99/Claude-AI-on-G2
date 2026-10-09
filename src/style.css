@@ -50,7 +50,25 @@ h2 {
   font-size: 18px;
   margin: 0 0 8px;
 }
-section {
+/*
+ * The Even app's WebView may not scroll the page itself, so the content scrolls
+ * inside its own full-screen container instead.
+ */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+.scroller {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+section,
+details.card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -196,4 +214,28 @@ body[data-groq='off'] .recipe-text,
 body[data-groq='off'] .groq-hint,
 body[data-engine='claude'] .groq-only {
   display: none;
+}
+details.card > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+details.card > summary::-webkit-details-marker {
+  display: none;
+}
+details.card > summary h2 {
+  margin: 0;
+}
+details.card > summary::after {
+  content: '+';
+  font-size: 22px;
+  color: var(--accent);
+}
+details.card[open] > summary::after {
+  content: '\2212';
+}
+details.card[open] > summary {
+  margin-bottom: 8px;
 }
