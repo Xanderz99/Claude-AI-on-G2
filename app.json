@@ -1,0 +1,17 @@
+{
+  "package_id": "com.claudeong2.app",
+  "edition": "202601",
+  "name": "Claude",
+  "version": "0.1.0",
+  "min_app_version": "2.2.10",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Receives Claude answers from your iPhone Shortcut through the ntfy.sh relay, and (optionally) transcribes and answers questions with Groq.",
+      "whitelist": ["https://ntfy.sh", "https://api.groq.com"]
+    }
+  ],
+  "supported_languages": ["en"]
+}
