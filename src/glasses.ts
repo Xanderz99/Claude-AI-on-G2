@@ -28,12 +28,12 @@ const BODY = { id: 2, name: 'body' };
 export const MENU = { clear: 1, firstPage: 2, talk: 3 } as const;
 
 /** 'tap' is offered first; return true from the handler to consume it instead of paging. */
-export type GlassesAction = 'tap' | 'talk' | 'clear' | 'exit';
+export type GlassesAction = 'tap' | 'talk' | 'holdStart' | 'holdEnd' | 'clear' | 'exit';
 
 /**
  * Owns the glasses page: a one-line header (question + page number) and a
- * paged body. Swipe forward/back (or tap) to page, double-tap to talk,
- * long-press the temple for the menu.
+ * paged body. Like Even AI: press and hold the temple to talk, release to send.
+ * Double-tap also starts talking; tap or swipe to page.
  */
 export class GlassesView {
   private pages: string[] = [''];
@@ -136,6 +136,12 @@ export class GlassesView {
         break;
       case OsEventTypeList.DOUBLE_CLICK_EVENT:
         this.onAction('talk');
+        break;
+      case OsEventTypeList.LONG_PRESS_EVENT:
+        this.onAction('holdStart');
+        break;
+      case OsEventTypeList.LONG_PRESS_RELEASE_EVENT:
+        this.onAction('holdEnd');
         break;
       case OsEventTypeList.SYSTEM_EXIT_EVENT:
       case OsEventTypeList.ABNORMAL_EXIT_EVENT:

@@ -2,15 +2,15 @@ import { AudioInputSource, waitForEvenAppBridge, type EvenAppBridge } from '@eve
 import { GlassesView, type GlassesAction } from './glasses';
 import { toPlainText } from './paginate';
 import { Inbox, publish, runShortcutUrl, uploadAudio, type InboxMessage, type InboxStatus } from './inbox';
-import { Recorder } from './recorder';
+import { Recorder, levelMeter } from './recorder';
 import { DEFAULT_VOICE_SHORTCUT, SettingsStore, randomTopic, type Settings } from './settings';
 import './style.css';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const READY_TEXT =
-  'Ready.\n\nDouble-tap: talk to Claude\nTap or swipe: next page\n\n' +
-  'Or say "Hey Siri, Ask Claude on G2" on your iPhone.';
+  'Hold the temple and ask anything.\nLet go to send.\n\n' +
+  'Double-tap also starts listening.\nTap or swipe: next page';
 
 /** If the Shortcut hasn't reported back by then, suggest running it from the phone. */
 const SHORTCUT_TIMEOUT_MS = 45_000;
@@ -26,6 +26,9 @@ let pending: { question: string; at: number; answerEl: HTMLElement } | null = nu
 let recorder: Recorder | null = null;
 let voiceTimer: ReturnType<typeof setTimeout> | null = null;
 let talkWatchdog: ReturnType<typeof setInterval> | null = null;
+let thinkingTimer: ReturnType<typeof setInterval> | null = null;
+/** Set when the app was opened from the glasses menu; listening then starts right away. */
+let launchedFromGlasses = false;
 /** Shortcut link for the last recording, for the phone's "Run Shortcut" fallback button. */
 let lastVoiceLink = '';
 
@@ -86,6 +89,7 @@ function fillSettingsForm() {
   $<HTMLInputElement>('topic').value = settings.topic;
   $<HTMLInputElement>('ntfyServer').value = settings.ntfyServer;
   $<HTMLInputElement>('voiceShortcut').value = settings.voiceShortcut;
+  $<HTMLInputElement>('listenOnLaunch').checked = settings.listenOnLaunch;
   for (const el of document.querySelectorAll('.shortcut-url')) el.textContent = shortcutUrl();
   for (const el of document.querySelectorAll('.voice-shortcut-name')) el.textContent = settings.voiceShortcut;
 }
@@ -95,6 +99,7 @@ async function saveSettingsFromForm() {
     topic: $<HTMLInputElement>('topic').value.trim() || randomTopic(),
     ntfyServer: $<HTMLInputElement>('ntfyServer').value.trim() || 'https://ntfy.sh',
     voiceShortcut: $<HTMLInputElement>('voiceShortcut').value.trim() || DEFAULT_VOICE_SHORTCUT,
+    listenOnLaunch: $<HTMLInputElement>('listenOnLaunch').checked,
   };
   await store.save(settings);
   fillSettingsForm();
@@ -113,6 +118,7 @@ function flash(text: string) {
 
 function clearAll() {
   pending = null;
+  stopThinking();
   glasses?.show('Claude', READY_TEXT);
   clearLog();
 }
@@ -125,12 +131,13 @@ function onInboxMessage(msg: InboxMessage) {
     case 'question': {
       const answerEl = addLogEntry(msg.text, 'Asking Claude...');
       pending = { question: msg.text, at: Date.now(), answerEl };
-      glasses?.show(`> ${msg.text}`, 'Asking Claude...', 'thinking');
+      startThinking(`> ${msg.text}`, 'Asking Claude...');
       return;
     }
     case 'answer': {
       const p = pending && Date.now() - pending.at < PENDING_MS ? pending : null;
       pending = null;
+      stopThinking();
       glasses?.show(p ? `> ${p.question}` : 'Claude', msg.text);
       if (p) p.answerEl.textContent = toPlainText(msg.text);
       else addLogEntry('', msg.text);
@@ -147,9 +154,17 @@ function onInboxStatus(status: InboxStatus) {
 
 function onGlassesAction(action: GlassesAction): boolean {
   switch (action) {
+    case 'holdStart':
+      // Like Even AI: press and hold to talk...
+      if (!recorder) void startTalk(true);
+      return true;
+    case 'holdEnd':
+      // ...and release to send.
+      if (recorder && !recorder.autoStop) void finishTalk();
+      return true;
     case 'talk':
       if (recorder) void finishTalk();
-      else void startTalk();
+      else void startTalk(false);
       return true;
     case 'tap':
       // While recording, a tap means "I'm done talking".
@@ -160,6 +175,7 @@ function onGlassesAction(action: GlassesAction): boolean {
       clearAll();
       return true;
     case 'exit':
+      stopThinking();
       if (recorder) void stopMic();
       return true;
   }
@@ -167,24 +183,42 @@ function onGlassesAction(action: GlassesAction): boolean {
 
 // ---------- Voice from the glasses mic ----------
 
-async function startTalk() {
+function formatSeconds(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Start recording from the G2 mic. In hold mode (press and hold the temple)
+ * the recording ends on release; otherwise on a tap or a pause in speech.
+ */
+async function startTalk(hold: boolean) {
   if (!bridge || !glasses) return;
-  const rec = new Recorder();
+  stopThinking();
+  const rec = new Recorder({ autoStop: !hold });
   recorder = rec;
-  glasses.show('Listening...', 'Speak now.\n\nTap when you are done, or just pause.', 'rec');
+  const hint = hold ? 'Release to send' : 'Tap when done, or just pause';
+  const render = (elapsed: number) =>
+    glasses?.show('Listening...', `${levelMeter(rec.level)}\n\n${hint}`, formatSeconds(elapsed));
+  render(0);
   const ok = await bridge.audioControl(true, AudioInputSource.Glasses);
   if (!ok) {
-    recorder = null;
+    if (recorder === rec) recorder = null;
     glasses.show('Claude', 'Could not turn on the glasses microphone. Try again.', 'error');
     return;
   }
-  // Stop even if the mic never delivers audio.
+  if (recorder !== rec) return; // released before the mic came on
   const started = Date.now();
+  // Refresh the meter, and stop even if the mic never delivers audio.
   talkWatchdog = setInterval(() => {
     if (recorder !== rec) return;
     const elapsed = Date.now() - started;
-    if (elapsed > rec.maxMs || (!rec.hasSpeech && elapsed > rec.noSpeechMs + 1000)) void finishTalk();
-  }, 500);
+    if (elapsed > rec.maxMs || (rec.autoStop && !rec.hasSpeech && elapsed > rec.noSpeechMs + 1000)) {
+      void finishTalk();
+      return;
+    }
+    render(elapsed);
+  }, 300);
 }
 
 async function stopMic(): Promise<Recorder | null> {
@@ -204,26 +238,41 @@ async function finishTalk() {
   const rec = await stopMic();
   if (!rec) return;
   if (!rec.hasSpeech) {
-    glasses?.show('Claude', "Didn't hear anything.\n\nDouble-tap to try again.");
+    glasses?.show('Claude', "Didn't hear anything.\n\nHold the temple and speak, then let go.");
     return;
   }
-  glasses?.show('Sending...', 'Uploading your question.', 'busy');
+  startThinking('Claude', 'Sending your question to Claude on your iPhone.');
   try {
     const audioUrl = await uploadAudio(settings.ntfyServer, settings.topic, rec.toWav());
     lastVoiceLink = runShortcutUrl(settings.voiceShortcut, audioUrl);
     $('runVoiceShortcut').hidden = false;
-    glasses?.show('Asking Claude...', `Running the "${settings.voiceShortcut}" Shortcut on your iPhone.`, 'thinking');
     voiceTimer = setTimeout(() => {
       voiceTimer = null;
+      stopThinking();
       glasses?.show(
         'Waiting for your iPhone',
-        `The Shortcut hasn't answered yet. If it didn't start, open the Claude page in the Even app and tap "Run Shortcut".`,
+        `The Shortcut hasn't answered yet. Unlock your iPhone and open the Even app. If it still doesn't start, tap "Run Shortcut" on the Claude page.`,
       );
     }, SHORTCUT_TIMEOUT_MS);
     openShortcut(lastVoiceLink);
   } catch (err) {
+    stopThinking();
     glasses?.show('Claude', err instanceof Error ? err.message : String(err), 'error');
   }
+}
+
+/** Animated "Thinking..." while the iPhone transcribes and asks Claude. */
+function startThinking(title: string, body: string) {
+  stopThinking();
+  let dots = 0;
+  const render = () => glasses?.show(title, body, 'Thinking' + '.'.repeat((dots++ % 3) + 1));
+  render();
+  thinkingTimer = setInterval(render, 600);
+}
+
+function stopThinking() {
+  if (thinkingTimer) clearInterval(thinkingTimer);
+  thinkingTimer = null;
 }
 
 /**
@@ -251,6 +300,10 @@ const inbox = new Inbox(onInboxMessage, onInboxStatus);
 
 async function boot() {
   bridge = await connectBridge();
+  // The host sends the launch source once, right after load, so listen before anything else.
+  bridge?.onLaunchSource((source) => {
+    launchedFromGlasses = source === 'glassesMenu';
+  });
   store = new SettingsStore(bridge);
   settings = await store.load();
   fillSettingsForm();
@@ -264,6 +317,11 @@ async function boot() {
     bridge.onEvenHubEvent((e) => {
       if (e.audioEvent && recorder) onMicFrame(e.audioEvent.audioPcm);
     });
+    // Opened from the glasses menu: start listening like Even AI. Give the
+    // launch-source push a moment to arrive.
+    setTimeout(() => {
+      if (ok && launchedFromGlasses && settings.listenOnLaunch && !recorder) void startTalk(false);
+    }, 600);
   } else {
     glasses = null;
     setPill('glassesStatus', 'Glasses: browser preview', 'off');

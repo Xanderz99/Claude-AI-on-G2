@@ -182,3 +182,12 @@ button.secondary {
   width: 100%;
   margin-top: 8px;
 }
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+label.check input {
+  width: auto;
+}

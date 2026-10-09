@@ -13,6 +13,8 @@ export interface RecorderOptions {
   maxMs?: number;
   /** RMS level (0..1) above which a frame counts as speech. */
   speechLevel?: number;
+  /** End on a pause in speech. Off for hold-to-talk, which ends on release. */
+  autoStop?: boolean;
 }
 
 export class Recorder {
@@ -20,10 +22,11 @@ export class Recorder {
   private bytes = 0;
   private heardSpeech = false;
   private quietMs = 0;
+  private lastLevel = 0;
   private opts: Required<RecorderOptions>;
 
   constructor(opts: RecorderOptions = {}) {
-    this.opts = { silenceMs: 1800, noSpeechMs: 8000, maxMs: 30_000, speechLevel: 0.02, ...opts };
+    this.opts = { silenceMs: 1800, noSpeechMs: 8000, maxMs: 30_000, speechLevel: 0.02, autoStop: true, ...opts };
   }
 
   get durationMs(): number {
@@ -38,6 +41,15 @@ export class Recorder {
     return this.opts.noSpeechMs;
   }
 
+  get autoStop(): boolean {
+    return this.opts.autoStop;
+  }
+
+  /** Loudness of the latest frame, 0..1. */
+  get level(): number {
+    return this.lastLevel;
+  }
+
   get hasSpeech(): boolean {
     return this.heardSpeech;
   }
@@ -47,13 +59,15 @@ export class Recorder {
     this.chunks.push(frame);
     this.bytes += frame.byteLength;
     const frameMs = (frame.byteLength / 2 / SAMPLE_RATE) * 1000;
-    if (rms(frame) >= this.opts.speechLevel) {
+    this.lastLevel = rms(frame);
+    if (this.lastLevel >= this.opts.speechLevel) {
       this.heardSpeech = true;
       this.quietMs = 0;
     } else {
       this.quietMs += frameMs;
     }
     if (this.durationMs >= this.opts.maxMs) return true;
+    if (!this.opts.autoStop) return false;
     if (this.heardSpeech) return this.quietMs >= this.opts.silenceMs;
     return this.durationMs >= this.opts.noSpeechMs;
   }
@@ -103,4 +117,11 @@ export function encodeWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
   v.setUint32(40, pcm.byteLength, true);
   out.set(pcm, 44);
   return out;
+}
+
+/** A simple sound-level meter for the Listening screen: 0 to 14 bars from -50 dB to -10 dB. */
+export function levelMeter(level: number): string {
+  const db = 20 * Math.log10(Math.max(level, 1e-6));
+  const bars = Math.round(Math.min(Math.max((db + 50) / 40, 0), 1) * 14);
+  return '|'.repeat(bars) || '.';
 }

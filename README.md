@@ -5,28 +5,37 @@ An [Even Hub](https://www.evenrealities.com/) app that puts answers from the **C
 You can ask in two ways:
 
 ```
-Double-tap the glasses ─▶ record G2 mic ─▶ upload ─▶ run "G2 Voice to Claude" ─┐
+Hold the temple ───────▶ record G2 mic ─▶ upload ─▶ run "G2 Voice to Claude" ─┐
                                                       (Transcribe Audio,        │
                                                        Ask Claude)              ├─▶ POST answer to ntfy.sh/<topic> ─▶ glasses
 "Hey Siri, Ask Claude on G2" ─▶ Dictate Text ─▶ Ask Claude ─────────────────────┘
 ```
 
-- **Voice in:** the **G2 microphone** (double-tap the glasses), or Siri dictation, the Action Button, Back Tap, or the home screen.
+- **Voice in:** the **G2 microphone**: press and hold the temple like Even AI. Or use Siri dictation, the Action Button, Back Tap, or the home screen.
 - **Claude in the middle:** the Claude app's [Ask Claude action](https://support.claude.com/en/articles/10263469-use-claude-app-intents-shortcuts-and-widgets-on-ios) (iOS 18+), signed in to your account.
 - **Answer out:** shown on the G2 display, with Markdown removed, word-wrapped using the firmware's own font metrics (`@evenrealities/pretext`), and split into pages.
 - **No server of your own:** the Shortcut sends text to the app through a private [ntfy.sh](https://ntfy.sh) topic. Long answers (over 4 KB) also work, because ntfy stores them as an attachment and the app downloads it.
 
 ## Glasses controls
 
-| Gesture             | Action                                                           |
-| ------------------- | ---------------------------------------------------------------- |
-| Double-tap          | Talk to Claude (start recording from the G2 mic)                 |
-| Tap while recording | Stop recording and send (it also stops on its own after a pause) |
-| Tap / swipe forward | Next page                                                        |
-| Swipe back          | Previous page                                                    |
-| Long-press (menu)   | Talk to Claude · First page · Clear                              |
+It works like **Even AI**: hold the temple, ask, let go.
 
-The header shows your question, a status (`rec`, `thinking`), and the page number (`2/3`).
+| Gesture                   | Action                                                                  |
+| ------------------------- | ----------------------------------------------------------------------- |
+| Press and hold the temple | Listen while held. Let go to send.                                      |
+| Double-tap                | Start listening hands-free. Tap, or pause for about 2 seconds, to send. |
+| Tap / swipe forward       | Next page                                                               |
+| Swipe back                | Previous page                                                           |
+| Menu                      | Talk to Claude · First page · Clear                                     |
+
+What you see, in order:
+
+1. **Listening** with a timer and a live sound-level meter.
+2. **Thinking...** (animated) while your iPhone transcribes and asks Claude.
+3. Your question in the header.
+4. The answer, in pages.
+
+When you open the app from the **glasses menu**, it starts listening right away, the same way Even AI does. You can turn this off in Settings.
 
 ## Setup
 
@@ -54,7 +63,7 @@ You need the **Claude** app from the App Store, signed in, on iOS 18 or later. T
 
 #### Talk from the glasses: "G2 Voice to Claude"
 
-When you double-tap, the app records from the G2 mic. It stops when you tap again or pause for about 2 seconds. The recording is uploaded as a WAV file to your private topic, and the app opens this Shortcut with the file's URL as input.
+When you hold the temple (or double-tap), the app records from the G2 mic until you let go (or tap, or pause). The recording is uploaded as a WAV file to your private topic, and the app opens this Shortcut with the file's URL as input.
 
 1. Make a shortcut named exactly **G2 Voice to Claude** (you can change the name in the app's Settings).
 2. **Get Contents of URL** with URL = **Shortcut Input**. This downloads the recording.
@@ -66,7 +75,7 @@ When you double-tap, the app records from the G2 mic. It stops when you tap agai
 
 > **Limits of this path.**
 >
-> - iOS only lets an app open a Shortcut while that app is on screen, so your iPhone must be unlocked with the Even app open. If the Shortcut doesn't start, the phone page shows a **Run Shortcut** button, and after 45 s the glasses tell you to use it.
+> - **This is the main difference from Even AI.** iOS only lets an app open a Shortcut while that app is on screen, so your iPhone must be unlocked with the Even app open. Going fully hands-free, with the phone in your pocket, would need the app to call Claude directly with an Anthropic API key. If the Shortcut doesn't start, the phone page shows a **Run Shortcut** button, and after 45 s the glasses tell you to use it.
 > - Apple's _Transcribe Audio_ action has been reported to be unreliable on some iOS versions.
 > - Recordings are uploaded to your private topic on ntfy.sh (a separate `-mic` topic), which deletes attachments automatically after a few hours.
 

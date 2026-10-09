@@ -6,6 +6,8 @@ export interface Settings {
   ntfyServer: string;
   /** Shortcut that the glasses run to transcribe a recording and ask Claude. */
   voiceShortcut: string;
+  /** Start listening as soon as the app is opened from the glasses menu, like Even AI. */
+  listenOnLaunch: boolean;
 }
 
 export const DEFAULT_VOICE_SHORTCUT = 'G2 Voice to Claude';
@@ -42,6 +44,7 @@ export class SettingsStore {
       topic: saved.topic || randomTopic(),
       ntfyServer: saved.ntfyServer || import.meta.env.VITE_NTFY_SERVER || 'https://ntfy.sh',
       voiceShortcut: saved.voiceShortcut || DEFAULT_VOICE_SHORTCUT,
+      listenOnLaunch: saved.listenOnLaunch ?? true,
     };
     if (settings.topic !== saved.topic) await this.save(settings);
     return settings;

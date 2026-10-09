@@ -47,11 +47,12 @@
       </section>
 
       <section>
-        <h2>Talk from the glasses (double-tap)</h2>
+        <h2>Talk from the glasses, like Even AI</h2>
         <p>
-          Double-tap the glasses to record from the G2 microphone. Tap again, or just pause, to stop. The app then runs
-          the Shortcut <b class="voice-shortcut-name"></b>, which transcribes your voice, asks Claude, and sends the
-          answer back to the glasses.
+          <b>Press and hold</b> the temple and ask your question, then let go. You can also double-tap to start and tap
+          (or just pause) to finish. The glasses show a live sound meter while listening and then "Thinking...". Your
+          iPhone runs the Shortcut <b class="voice-shortcut-name"></b>, which transcribes your voice, asks Claude, and
+          sends the answer back to the glasses.
         </p>
         <ol class="steps">
           <li>In <b>Shortcuts</b>, make a new shortcut named exactly <b class="voice-shortcut-name"></b>.</li>
@@ -111,6 +112,10 @@
           <label
             >Shortcut that double-tap runs
             <input id="voiceShortcut" type="text" autocomplete="off" />
+          </label>
+          <label class="check">
+            <input id="listenOnLaunch" type="checkbox" />
+            Start listening when opened from the glasses menu
           </label>
           <label
             >ntfy server
